@@ -1,0 +1,7 @@
+name = "panel"
+main = "src/index.js"
+compatibility_date = "2025-01-01"
+
+[[rules]]
+type = "Text"
+globs = ["**/*.html"]
