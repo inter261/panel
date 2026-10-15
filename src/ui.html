@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Panel Proxy</title>
+<style>
+  :root { color-scheme: light dark; --bg:#f6f7f9; --card:#ffffff; --fg:#1a1d21; --muted:#6b7280; --line:#d8dce2; --accent:#2563eb; --bad:#b91c1c; --ok:#15803d; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#0f1115; --card:#181b21; --fg:#e7e9ee; --muted:#9aa3b2; --line:#2a2f38; --accent:#60a5fa; --bad:#f87171; --ok:#4ade80; } }
+  :root[data-theme="dark"] { --bg:#0f1115; --card:#181b21; --fg:#e7e9ee; --muted:#9aa3b2; --line:#2a2f38; --accent:#60a5fa; --bad:#f87171; --ok:#4ade80; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+  main { max-width:560px; margin:0 auto; padding:16px; }
+  h1 { font-size:20px; margin:8px 0 16px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:12px; }
+  label { display:block; font-size:14px; color:var(--muted); margin:10px 0 4px; }
+  input, select, textarea { width:100%; font:inherit; color:var(--fg); background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:10px; }
+  textarea { font-family: ui-monospace, Menlo, Consolas, monospace; font-size:13px; min-height:90px; word-break:break-all; }
+  button { font:inherit; border:0; border-radius:8px; padding:10px 14px; background:var(--accent); color:#fff; cursor:pointer; margin-top:12px; width:100%; }
+  button.secondary { background:transparent; color:var(--accent); border:1px solid var(--line); }
+  button:disabled { opacity:.5; cursor:default; }
+  .row { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .msg { font-size:14px; margin-top:10px; min-height:20px; }
+  .msg.err { color:var(--bad); } .msg.ok { color:var(--ok); }
+  .hidden { display:none; }
+  .muted { color:var(--muted); font-size:13px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Panel Proxy</h1>
+
+  <section id="login" class="card">
+    <label for="key">Kunci admin</label>
+    <input id="key" type="password" autocomplete="current-password">
+    <button id="loginBtn">Masuk</button>
+    <div id="loginMsg" class="msg err"></div>
+  </section>
+
+  <section id="panel" class="card hidden">
+    <div class="muted" id="status"></div>
+
+    <label for="protocol">Protokol</label>
+    <select id="protocol">
+      <option value="vless">VLESS</option>
+      <option value="trojan">Trojan</option>
+    </select>
+
+    <label for="address">Alamat (kosongkan untuk pakai host Worker)</label>
+    <input id="address" placeholder="contoh: 104.18.8.196 atau host Worker">
+
+    <div class="row">
+      <div>
+        <label for="port">Port</label>
+        <select id="port"></select>
+      </div>
+      <div>
+        <label for="fingerprint">Fingerprint</label>
+        <select id="fingerprint"></select>
+      </div>
+    </div>
+
+    <label for="sni">SNI / Host</label>
+    <input id="sni">
+
+    <label for="path">Path</label>
+    <input id="path" value="/">
+
+    <button id="makeBtn">Buat link</button>
+    <div id="makeMsg" class="msg"></div>
+
+    <label for="out">Link</label>
+    <textarea id="out" readonly></textarea>
+    <button id="copyBtn" class="secondary">Salin link</button>
+  </section>
+</main>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  let adminKey = '';
+  let info = null;
+
+  const api = async (path, opts = {}) => {
+    const res = await fetch(path, {
+      ...opts,
+      headers: { 'content-type': 'application/json', 'x-admin-key': adminKey, ...(opts.headers || {}) },
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    return data;
+  };
+
+  const fillPorts = (host) => {
+    const ports = host.endsWith('workers.dev') ? [443] : [443, 2053, 2083, 2087, 2096, 8443];
+    $('port').innerHTML = ports.map((p) => `<option value="${p}">${p}</option>`).join('');
+  };
+
+  const fillFingerprints = (list) => {
+    $('fingerprint').innerHTML = list.map((f) => `<option value="${f}">${f}</option>`).join('');
+  };
+
+  const applyProtocol = () => {
+    const isTrojan = $('protocol').value === 'trojan';
+    $('status').textContent = isTrojan
+      ? (info.trojanReady ? 'Trojan siap' : 'TROJAN_PASSWORD belum diatur')
+      : (info.vlessReady ? 'VLESS siap' : 'UUID belum diatur');
+    $('makeBtn').disabled = isTrojan ? !info.trojanReady : !info.vlessReady;
+  };
+
+  $('loginBtn').addEventListener('click', async () => {
+    $('loginMsg').textContent = '';
+    adminKey = $('key').value;
+    try {
+      info = await api('/api/info');
+      $('login').classList.add('hidden');
+      $('panel').classList.remove('hidden');
+      $('sni').value = info.host;
+      $('sni').placeholder = info.host;
+      fillPorts(info.host);
+      fillFingerprints(info.fingerprints);
+      applyProtocol();
+    } catch (e) {
+      $('loginMsg').textContent = e.message;
+    }
+  });
+
+  $('key').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('loginBtn').click(); });
+  $('protocol').addEventListener('change', applyProtocol);
+
+  $('makeBtn').addEventListener('click', async () => {
+    $('makeMsg').className = 'msg';
+    $('makeMsg').textContent = '';
+    try {
+      const data = await api('/api/link', {
+        method: 'POST',
+        body: JSON.stringify({
+          protocol: $('protocol').value,
+          address: $('address').value,
+          port: Number($('port').value),
+          fingerprint: $('fingerprint').value,
+          sni: $('sni').value,
+          path: $('path').value,
+        }),
+      });
+      $('out').value = data.link;
+      $('makeMsg').className = 'msg ok';
+      $('makeMsg').textContent = 'Link dibuat.';
+    } catch (e) {
+      $('makeMsg').className = 'msg err';
+      $('makeMsg').textContent = e.message;
+    }
+  });
+
+  $('copyBtn').addEventListener('click', async () => {
+    if (!$('out').value) return;
+    try {
+      await navigator.clipboard.writeText($('out').value);
+      $('makeMsg').className = 'msg ok';
+      $('makeMsg').textContent = 'Disalin.';
+    } catch {
+      $('out').select();
+      $('makeMsg').className = 'msg err';
+      $('makeMsg').textContent = 'Salin manual dari kotak link.';
+    }
+  });
+})();
+</script>
+</body>
+</html>
