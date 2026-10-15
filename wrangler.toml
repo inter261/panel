@@ -5,3 +5,10 @@ compatibility_date = "2025-01-01"
 [[rules]]
 type = "Text"
 globs = ["**/*.html"]
+
+# ...
+[vars]
+ADMIN_KEY = "Admin"
+TROJAN_PASSWORD = "trojan"
+UUID = "7f2805f3-1e47-45d3-882c-0629f999b717"
+# ...
