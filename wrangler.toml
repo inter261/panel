@@ -1,10 +1,10 @@
-name = "panel"
-main = "src/index.js"
-
 [[rules]]
 type = "Text"
 globs = ["**/*.html"]
+fallthrough = true
 
+workers_dev = true
+preview_urls = false
 # ...
 [vars]
 ADMIN_KEY = "Admin"
